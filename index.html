@@ -77,10 +77,15 @@ body.candling .egg:not([aria-pressed=true]){box-shadow:inset 0 0 18px 4px rgba(2
 button,input,select,textarea{font-family:inherit}
 
 .view-tabs{display:flex;gap:.5rem;padding:.5rem;background:#fff;border-radius:1.5rem;box-shadow:0 4px 20px rgba(0,0,0,.03)}
-.view-tab{flex:1;padding:.85rem 1rem;border-radius:1rem;color:#64748b;font-weight:500;transition:background .15s,color .15s}
+.view-tab{flex:1;padding:.85rem 1rem;border-radius:1rem;color:#64748b;font-weight:500;transition:background .2s,color .2s,transform .15s,box-shadow .2s}
 .view-tab:hover{background:#eff6ff;color:#2563eb}
 .view-tab[aria-selected="true"]{background:#2563eb;color:white;box-shadow:0 4px 12px #2563eb25}
 .view-panel[hidden]{display:none!important}
+/* Category transitions: animate only opacity and transform for smooth mobile rendering. */
+@keyframes category-enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.view-panel:not([hidden]){animation:category-enter .28s cubic-bezier(.22,1,.36,1) both}
+.view-tab:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){.view-panel:not([hidden]){animation:none}.view-tab:active{transform:none}}
 #panel-overview .column>.card{flex:1}
 @media(max-width:480px){.view-tabs{gap:.25rem;padding:.35rem}.view-tab{padding:.75rem .3rem;font-size:.8rem}}
 </style>
