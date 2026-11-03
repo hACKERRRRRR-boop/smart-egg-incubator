@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#eef2f6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ตู้ฟักไข่">
+<title>ตู้ฟักไข่อัจฉริยะ (16 ฟอง)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{font-family:'Kanit',sans-serif;background:#eef2f6}
+.num{font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums}
+.card{background:#fff;border-radius:1.5rem;box-shadow:0 4px 20px rgba(15,23,42,.05);padding:1.25rem}
+@media(max-width:767px){body[class]{padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}}
+@media(hover:none){.egg:hover{transform:none}}
+button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{cursor:pointer}button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+@keyframes blink{50%{opacity:.3}}.live{animation:blink 1.8s infinite}
+@media(prefers-reduced-motion:reduce){.live{animation:none}*{transition:none!important}}
+.st-good{--c:#10b981;--bg:#ecfdf5;--tx:#047857}
+.st-watch{--c:#f59e0b;--bg:#fffbeb;--tx:#b45309}
+.st-none{--c:#f43f5e;--bg:#fff1f2;--tx:#be123c}
+.chip{background:var(--bg);color:var(--tx);border-radius:999px;padding:2px 10px;font-size:.85rem;font-weight:700;white-space:nowrap}
+.bar{display:block;height:8px;background:#e2e8f0;border-radius:9px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--c);border-radius:9px;transition:width .6s}
+.gauge{position:relative;height:8px;background:#e2e8f0;border-radius:9px}
+.gauge b{position:absolute;top:0;bottom:0;background:#a7f3d0;border-radius:9px}
+.gauge u{position:absolute;top:-4px;width:6px;height:16px;border-radius:4px;background:#0f172a;transform:translateX(-50%);transition:left .6s}
+.tray{background:#e2e8f0;border-radius:1.25rem;padding:.75rem;box-shadow:inset 0 2px 6px rgba(15,23,42,.12)}
+/* Egg silhouette: softly tapered top, full rounded base, centered readings. */
+.egg{aspect-ratio:1/1.25;min-width:0;padding:.5rem .2rem;border-radius:50% 50% 48% 48%/60% 60% 40% 40%;background:var(--bg);border:2px solid var(--c);color:var(--tx);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:transform .15s,box-shadow .15s}
+.egg.st-good{border-color:#5bd6b0;background:#ecfdf5;color:#059669}
+.egg>span{line-height:1.25}
+.egg>span:first-child{font-size:.75rem}
+.egg>span:last-child{font-size:1.125rem}
+.egg.st-none{border-style:dashed;opacity:.75}
+.egg:hover{transform:translateY(-2px)}
+.egg[aria-pressed=true]{box-shadow:0 0 0 3px #fff,0 0 0 6px #2563eb}
+body.candling .egg:not([aria-pressed=true]){box-shadow:inset 0 0 18px 4px rgba(251,191,36,.6)}
+.row{display:grid;grid-template-columns:2.8rem 1fr 3rem;gap:.6rem;align-items:center;width:100%;text-align:left;padding:.5rem .6rem;border-radius:.9rem}
+.row:hover,.row.on{background:#f1f5f9}
+.fchip{border:1px solid #cbd5e1;border-radius:999px;padding:3px 12px;font-size:.85rem;font-weight:600;color:#475569}
+.fchip[aria-pressed=true],.cbtn[aria-pressed=true]{background:#0f172a;color:#fff;border-color:#0f172a}
+.cbtn{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:.45rem 1rem;font-weight:600;font-size:.9rem}
+.arrow{flex:none;width:2.25rem;height:2.25rem;border-radius:999px;background:#f1f5f9;color:#475569;font-size:1.2rem}
+.day-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;cursor:grab}
+.day-scroll.dragging{cursor:grabbing;user-select:none}
+.dt{flex:none;width:3.6rem;height:4rem;border-radius:.85rem;background:#f8fafc;color:#64748b;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;user-select:none}
+.dt.past{background:#ecfdf5;color:#047857}
+.dt[aria-selected=true]{background:#2563eb;color:#fff;box-shadow:0 6px 14px rgba(37,99,235,.3)}
+.dt .now{position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:#10b981;border:2px solid #fff}
+
+/* Theme from index (2): rounded white panels and amber/sky/emerald highlights. */
+.card{border-radius:2rem;box-shadow:0 4px 20px rgba(0,0,0,.03);padding:1.5rem;min-width:0}
+.dashboard{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:1.5rem}
+.column{display:flex;flex-direction:column;gap:1.5rem;min-width:0}
+.topbar{border-radius:999px;padding:.75rem 1.5rem}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.metric{border-radius:1.5rem;padding:1rem;color:#fff;min-height:144px;display:flex;flex-direction:column;justify-content:space-between}
+.metric-label{background:rgba(255,255,255,.2);border-radius:.75rem;padding:.3rem .55rem;font-size:.75rem;font-weight:600;align-self:flex-start}
+.metric-value{font-size:clamp(1.6rem,2.5vw,2.25rem);font-weight:700;line-height:1.3}
+.metric p{font-size:.75rem;margin-top:.35rem;color:rgba(255,255,255,.95)}
+.metric-temp{background:#fbbf24;box-shadow:0 10px 15px -3px #fde68a80}
+.metric-hum{background:#38bdf8;box-shadow:0 10px 15px -3px #bae6fd80}
+.metric-rate{background:#10b981;box-shadow:0 10px 15px -3px #a7f3d080}
+.sensor{background:#f8fafc;border-radius:1rem;padding:1rem;margin-top:1rem;font-size:.875rem}
+.sensor .gauge{margin:1rem 0}
+@media(max-width:1100px) and (min-width:1024px){.metric{padding:.75rem}.metric-label{font-size:.7rem}}
+@media(max-width:1023px){.dashboard{grid-template-columns:1fr}.topbar{border-radius:1.5rem}.metric-value{font-size:2.25rem}}
+@media(max-width:600px){.metrics{gap:.5rem}.metric{padding:.75rem;min-height:135px}.metric-label{font-size:.68rem;padding:.3rem}.metric-value{font-size:1.75rem}.card{padding:1.25rem}.topbar{padding:1rem}.metric p{font-size:.68rem}}
+
+button,input,select,textarea{font-family:inherit}
+
+.view-tabs{display:flex;gap:.5rem;padding:.5rem;background:#fff;border-radius:1.5rem;box-shadow:0 4px 20px rgba(0,0,0,.03)}
+.view-tab{flex:1;padding:.85rem 1rem;border-radius:1rem;color:#64748b;font-weight:500;transition:background .15s,color .15s}
+.view-tab:hover{background:#eff6ff;color:#2563eb}
+.view-tab[aria-selected="true"]{background:#2563eb;color:white;box-shadow:0 4px 12px #2563eb25}
+.view-panel[hidden]{display:none!important}
+#panel-overview .column>.card{flex:1}
+@media(max-width:480px){.view-tabs{gap:.25rem;padding:.35rem}.view-tab{padding:.75rem .3rem;font-size:.8rem}}
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-6 text-slate-700">
+<div class="max-w-[1400px] mx-auto space-y-6">
+<header class="card topbar flex flex-wrap items-center justify-between gap-4 lg:sticky lg:top-4 z-50">
+ <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white text-xl shadow-lg shadow-blue-200">🥚</div><div><h1 class="font-bold text-slate-800 text-lg leading-tight">ตู้ฟักและตรวจคุณภาพไข่ไก่ (16 ฟอง)</h1></div></div>
+ <div class="hidden xl:block bg-slate-100 px-4 py-2 rounded-full text-xs text-slate-600">ชุด <b>#EGG-2025-07</b> · เริ่ม <b>1 ก.ค. 2568</b></div>
+ <div class="flex flex-wrap items-center gap-3"><div class="text-right"><p id="date" class="text-xs text-slate-400"></p><p id="time" class="num text-slate-500 text-sm"></p></div><button id="btn-candling" class="cbtn" aria-pressed="false">💡 ส่องไฟประมวลผล</button></div>
+</header>
+<div id="candling-alert" class="hidden bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 text-amber-800 font-semibold"><span class="live inline-block w-2 h-2 rounded-full bg-amber-500 mr-2"></span>ระบบกล้อง AI กำลังส่องไฟประมวลผลตัวอ่อนในไข่ทั้ง 16 ฟอง...</div>
+<nav class="view-tabs" role="tablist" aria-label="หมวดข้อมูลตู้ฟักไข่">
+<button id="tab-overview" class="view-tab" type="button" role="tab" aria-controls="panel-overview" aria-selected="true" tabindex="0" data-view="overview">📊 ภาพรวม</button>
+<button id="tab-eggs" class="view-tab" type="button" role="tab" aria-controls="panel-eggs" aria-selected="false" tabindex="-1" data-view="eggs">🥚 ติดตามไข่ / AI</button>
+<button id="tab-timeline" class="view-tab" type="button" role="tab" aria-controls="panel-timeline" aria-selected="false" tabindex="-1" data-view="timeline">📅 ระยะเวลาฟัก</button>
+</nav>
+<main>
+<div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0" class="view-panel dashboard">
+ <div class="column">
+  <div class="metrics">
+   <div class="metric metric-temp"><span class="metric-label">🌡️ อุณหภูมิ</span><div><span id="t-val" class="num metric-value">37.5</span> °C<p>เป้าหมาย 37.5 ±0.3</p></div></div>
+   <div class="metric metric-hum"><span class="metric-label">💧 ความชื้น</span><div><span id="h-val" class="num metric-value">52.0</span> %<p>เป้าหมาย 50–60 ±2%</p></div></div>
+   <div class="metric metric-rate"><span class="metric-label">✨ โอกาสฟัก</span><div><span id="avg" class="num metric-value"></span><p>โดยประมาณจาก AI</p></div></div>
+  </div>
+  <section class="card">
+   <div class="flex flex-wrap justify-between items-start gap-3 mb-6"><div><p class="text-slate-400 text-sm">ข้อมูลเชิงลึก</p><h2 class="text-xl font-bold text-slate-800 mt-1">ภาพรวมตู้ฟักไข่</h2></div><span id="overall" class="chip st-good"></span></div>
+   <div class="sensor"><div class="flex flex-wrap justify-between gap-2"><b>🌡️ อุณหภูมิ</b><span id="t-chip" class="chip"></span></div><p class="mt-3 flex justify-between gap-2"><span>ต่ำสุด: <b id="t-min" class="num"></b> °C</span><span>สูงสุด: <b id="t-max" class="num"></b> °C</span></p><div class="gauge"><b id="t-band"></b><u id="t-mark"></u></div><p>ฮีตเตอร์อินฟราเรด: <b id="heater" class="text-amber-600"></b></p></div>
+   <div class="sensor"><div class="flex flex-wrap justify-between gap-2"><b>💧 ความชื้น</b><span id="h-chip" class="chip"></span></div><p class="mt-3 flex justify-between gap-2"><span>ต่ำสุด: <b id="h-min" class="num"></b> %</span><span>สูงสุด: <b id="h-max" class="num"></b> %</span></p><div class="gauge"><b id="h-band"></b><u id="h-mark"></u></div><p>เครื่องทำความชื้น: <b id="humidifier"></b></p></div>
+
+  </section>
+ </div>
+<div class="column"><section class="card">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <h2 class="font-bold text-slate-900 text-lg">📈 แนวโน้มอุณหภูมิและความชื้น</h2>
+    <div class="flex gap-4 text-sm text-slate-600">
+      <span><i class="inline-block w-3 h-1 bg-amber-400 mr-1.5 align-middle"></i>อุณหภูมิ (°C, แกนซ้าย)</span>
+      <span><i class="inline-block w-3 h-1 bg-sky-400 mr-1.5 align-middle"></i>ความชื้น (%, แกนขวา)</span>
+    </div>
+  </div>
+  <div class="relative h-48 sm:h-56"><canvas id="envChart"></canvas></div>
+  <p class="text-xs text-slate-500 mt-2">ย้อนหลังประมาณ 2 นาที · อัปเดตทุก 3 วินาที</p>
+</section></div></div>
+<div id="panel-eggs" role="tabpanel" aria-labelledby="tab-eggs" tabindex="0" class="view-panel" hidden><!-- ไข่รายฟอง + วิเคราะห์ -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+  <div class="card lg:col-span-5">
+    <h2 class="font-bold text-slate-900 text-lg">สถานะรายฟอง</h2>
+    <div id="counts" class="flex flex-wrap gap-x-5 gap-y-2 mt-3 mb-4"></div>
+    <div id="tray" class="tray grid grid-cols-4 gap-3 max-w-[440px] mx-auto"></div>
+    <p class="text-sm text-slate-500 mt-3 text-center">กดที่ไข่เพื่อดูผลวิเคราะห์ของฟองนั้น</p>
+  </div>
+  <div class="card lg:col-span-7">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="font-bold text-slate-900 text-lg">🤖 AI วิเคราะห์รายฟอง <span class="text-xs font-medium text-slate-500 border border-slate-200 rounded-md px-2 py-0.5 ml-1 align-middle">YOLOv8-nano</span></h2>
+      <p class="text-sm text-slate-500">โอกาสฟักเฉลี่ย <b id="avg-detail" class="num text-emerald-600 text-lg"></b></p>
+    </div>
+    <div id="detail" class="mt-4"></div>
+    <div class="flex gap-2 mt-5 mb-2" id="filters"></div>
+    <div id="list" class="grid sm:grid-cols-2 gap-x-4 gap-y-1"></div>
+  </div>
+</section></div>
+<div id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline" tabindex="0" class="view-panel" hidden>   <div class="card min-w-0">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <span class="font-semibold text-slate-800">📅 ระยะเวลาการฟัก</span>
+      <span class="text-sm text-slate-500">คาดว่าฟักวันที่ <b id="hatch" class="text-slate-800"></b></span>
+    </div>
+    <p class="mt-3"><span id="day-now" class="num text-5xl font-bold text-slate-900"></span><span class="text-xl text-slate-500"> / 21 วัน</span> <span id="remain" class="chip st-good ml-2"></span></p>
+    <span class="bar mt-3" style="--c:#2563eb"><i id="prog"></i></span>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="arrow" id="day-prev" aria-label="วันก่อนหน้า">‹</button>
+      <div id="day-tabs" role="tablist" class="day-scroll flex gap-2 overflow-x-auto flex-1 min-w-0 pt-2 pb-3 px-1"></div>
+      <button class="arrow" id="day-next" aria-label="วันถัดไป">›</button>
+    </div>
+    <p id="day-note" class="text-sm text-slate-600 mt-1"></p>
+  </div></div>
+</main>
+<p class="text-xs text-slate-500 flex items-center justify-center gap-2"><span id="mqtt-indicator" class="w-2 h-2 rounded-full bg-red-500"></span><span id="mqtt-status">MQTT WS: ยังไม่เชื่อมต่อ — กำลังแสดงข้อมูลจำลอง</span></p>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const ST = {good:'st-good', watch:'st-watch', none:'st-none'};
+const LBL = {good:'สมบูรณ์', watch:'ควรติดตาม', none:'ไม่พบตัวอ่อน'};
+const ADV = {good:'ตัวอ่อนพัฒนาตามปกติ ไม่ต้องดำเนินการ', watch:'ตัวอ่อนโตช้ากว่าฟองอื่น ควรส่องไฟซ้ำและเฝ้าดูต่อ', none:'ไม่พบตัวอ่อนจากภาพส่องไฟ พิจารณานำออกจากตู้'};
+
+/* ---------- วันที่/เวลาเรียลไทม์ ---------- */
+const fDate = new Intl.DateTimeFormat('th-TH', {dateStyle:'full'});
+const fTime = new Intl.DateTimeFormat('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'});
+(function tick(){ const n = new Date(); $('date').textContent = fDate.format(n); $('time').textContent = fTime.format(n); setTimeout(tick, 1000); })();
+
+/* ---------- ระยะเวลาฟัก (ค่าจำลอง: ตอนนี้วันที่ 14) ---------- */
+const START = new Date(2025, 6, 1), TOTAL = 21, TODAY = 14;
+const fmt = d => d.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
+const dayDate = n => { const d = new Date(START); d.setDate(d.getDate() + n - 1); return d; };
+$('day-now').textContent = TODAY;
+$('remain').textContent = 'เหลืออีก ' + (TOTAL - TODAY) + ' วัน';
+$('prog').style.width = (TODAY / TOTAL * 100) + '%';
+$('hatch').textContent = fmt(dayDate(TOTAL + 1));
+
+const wrap = $('day-tabs'); let selDay = TODAY, moved = false;
+for (let i = 1; i <= TOTAL; i++) {
+  const b = document.createElement('button');
+  b.className = 'dt' + (i < TODAY ? ' past' : ''); b.dataset.day = i; b.setAttribute('role', 'tab');
+  b.innerHTML = '<span class="text-xs">วันที่</span><span class="num font-bold text-base">' + i + '</span>' + (i === TODAY ? '<span class="now" title="วันนี้"></span>' : '');
+  b.onclick = () => { if (!moved) pickDay(i, true); };
+  wrap.appendChild(b);
+}
+function center(d, instant) {
+  const el = wrap.querySelector('[data-day="' + d + '"]'), w = wrap.getBoundingClientRect(), t = el.getBoundingClientRect();
+  wrap.scrollTo({left: wrap.scrollLeft + t.left - w.left - (w.width - t.width) / 2, behavior: instant ? 'auto' : 'smooth'});
+}
+function pickDay(d, scroll) {
+  selDay = d;
+  wrap.querySelectorAll('.dt').forEach(b => b.setAttribute('aria-selected', +b.dataset.day === d));
+  const rel = d === TODAY ? 'วันนี้' : d < TODAY ? 'ผ่านมาแล้ว ' + (TODAY - d) + ' วัน' : 'อีก ' + (d - TODAY) + ' วัน';
+  $('day-note').textContent = 'วันที่ ' + d + ' · ' + fmt(dayDate(d)) + ' · ' + rel;
+  if (scroll) center(d);
+}
+$('day-prev').onclick = () => pickDay(Math.max(1, selDay - 1), true);
+$('day-next').onclick = () => pickDay(Math.min(TOTAL, selDay + 1), true);
+let down = false, sx = 0, sl = 0;
+wrap.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') { down = true; moved = false; sx = e.clientX; sl = wrap.scrollLeft; } });
+addEventListener('pointermove', e => { if (!down) return; const dx = e.clientX - sx; if (Math.abs(dx) > 5) { moved = true; wrap.classList.add('dragging'); } if (moved) wrap.scrollLeft = sl - dx; });
+addEventListener('pointerup', () => { if (down) { down = false; wrap.classList.remove('dragging'); setTimeout(() => moved = false, 0); } });
+wrap.addEventListener('wheel', e => {
+  const max = wrap.scrollWidth - wrap.clientWidth;
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && ((e.deltaY > 0 && wrap.scrollLeft < max - 1) || (e.deltaY < 0 && wrap.scrollLeft > 0))) { e.preventDefault(); wrap.scrollLeft += e.deltaY; }
+}, {passive: false});
+pickDay(TODAY); requestAnimationFrame(() => center(TODAY, true)); addEventListener('load', () => center(selDay, true));
+
+/* ---------- ไข่รายฟอง + AI (ข้อมูลชุดเดียว ใช้ร่วมกันทั้งสถานะและการวิเคราะห์) ---------- */
+const EGGS = [[95,'แข็งแรงดี'],[92,'แข็งแรงดี'],[88,'ปกติ'],[48,'ควรติดตาม'],[94,'แข็งแรงดี'],[91,'ปกติ'],[89,'ปกติ'],[97,'แข็งแรงมาก'],[85,'ปกติ'],[0,'ไม่พบตัวอ่อน'],[90,'ปกติ'],[93,'แข็งแรงดี'],[96,'แข็งแรงดี'],[87,'ปกติ'],[92,'ปกติ'],[95,'แข็งแรงดี']]
+  .map(([p, t], i) => ({n: String(i + 1).padStart(2, '0'), p, t, st: p === 0 ? 'none' : p < 60 ? 'watch' : 'good'}));
+let sel = 3, filter = 'all';
+$('avg').textContent = Math.round(EGGS.reduce((s, e) => s + e.p, 0) / EGGS.length) + '%';
+$('avg-detail').textContent = $('avg').textContent;
+
+function renderEggs() {
+  $('counts').innerHTML = Object.keys(ST).map(k => `<div class="${ST[k]} flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:var(--c)"></span><span class="num font-bold text-xl text-slate-900">${EGGS.filter(e => e.st === k).length}</span><span class="text-sm text-slate-600">${LBL[k]}</span></div>`).join('');
+  $('tray').innerHTML = EGGS.map((e, i) => `<button class="egg ${ST[e.st]}" data-i="${i}" aria-pressed="${i === sel}" aria-label="ฟองที่ ${e.n} ${LBL[e.st]} ${e.p}%"><span class="num text-xs font-bold">#${e.n}</span><span class="num text-lg font-bold">${e.st === 'none' ? '—' : e.p + '%'}</span></button>`).join('');
+  const e = EGGS[sel];
+  $('detail').innerHTML = `<div class="${ST[e.st]} bg-slate-50 rounded-2xl p-4"><div class="flex items-center justify-between gap-3"><div><p class="text-sm text-slate-500">ฟองที่</p><p class="num text-3xl font-bold text-slate-900">#${e.n}</p></div><div class="text-right"><span class="chip">${e.t}</span><p class="num text-3xl font-bold mt-1" style="color:var(--tx)">${e.p}%</p><p class="text-xs text-slate-500">โอกาสฟัก</p></div></div><span class="bar mt-3"><i style="width:${e.p}%"></i></span><p class="text-slate-700 mt-3">${ADV[e.st]}</p></div>`;
+  const bad = EGGS.filter(x => x.st !== 'good').length;
+  $('filters').innerHTML = `<button class="fchip" data-f="all" aria-pressed="${filter === 'all'}">ทั้งหมด ${EGGS.length}</button><button class="fchip" data-f="watch" aria-pressed="${filter === 'watch'}">ต้องติดตาม ${bad}</button>`;
+  $('list').innerHTML = EGGS.map((x, i) => [x, i]).filter(([x]) => filter === 'all' || x.st !== 'good').map(([x, i]) => `<button class="row ${ST[x.st]} ${i === sel ? 'on' : ''}" data-i="${i}"><span class="num font-bold">#${x.n}</span><span><span class="text-sm text-slate-700">${x.t}</span><span class="bar mt-1"><i style="width:${x.p}%"></i></span></span><span class="num font-bold text-right" style="color:var(--tx)">${x.p}%</span></button>`).join('');
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-i],[data-f]'); if (!b) return;
+  if (b.dataset.f) filter = b.dataset.f; else sel = +b.dataset.i;
+  renderEggs();
+});
+renderEggs();
+
+/* ---------- ส่องไฟ ---------- */
+$('btn-candling').onclick = function () {
+  const on = document.body.classList.toggle('candling');
+  this.setAttribute('aria-pressed', on); $('candling-alert').classList.toggle('hidden', !on);
+};
+
+/* ---------- อุณหภูมิ/ความชื้น (ข้อมูลจำลอง — ต่อ MQTT แล้วเรียก update(temp, hum) แทน) ---------- */
+const bandSet = (id, min, max, lo, hi) => { const b = $(id); b.style.left = (lo - min) / (max - min) * 100 + '%'; b.style.width = (hi - lo) / (max - min) * 100 + '%'; };
+bandSet('t-band', 36.5, 38.5, 37.2, 37.8); bandSet('h-band', 40, 70, 50, 60);
+const grade = (v, c, tol, warn) => { const d = Math.abs(v - c); return d <= tol ? 'good' : d <= warn ? 'watch' : 'none'; };
+const word = (s, v, c) => s === 'good' ? 'ปกติ' : v > c ? 'สูงกว่าเป้า' : 'ต่ำกว่าเป้า';
+let temp = 37.5, hum = 52, heater = true, tMin = 36.8, tMax = 38.1, hMin = 48, hMax = 54.3;
+function step() {
+  temp = Math.max(37, Math.min(38, temp + (37.5 - temp) * .15 + (Math.random() - .5) * .12));
+  hum = Math.max(48, Math.min(54, hum + (53 - hum) * .1 + (Math.random() - .5) * .8));
+}
+function update() {
+  tMin = Math.min(tMin, temp); tMax = Math.max(tMax, temp); hMin = Math.min(hMin, hum); hMax = Math.max(hMax, hum);
+  if (temp < 37.4) heater = true; else if (temp > 37.6) heater = false;
+  const ts = grade(temp, 37.5, .3, .5), hs = grade(hum, 55, 5, 7);
+  $('t-val').textContent = temp.toFixed(1); $('h-val').textContent = hum.toFixed(1);
+  $('t-min').textContent = tMin.toFixed(1); $('t-max').textContent = tMax.toFixed(1);
+  $('h-min').textContent = hMin.toFixed(1); $('h-max').textContent = hMax.toFixed(1);
+  $('t-chip').className = 'chip ' + ST[ts]; $('t-chip').textContent = word(ts, temp, 37.5);
+  $('h-chip').className = 'chip ' + ST[hs]; $('h-chip').textContent = word(hs, hum, 55);
+  $('t-mark').style.left = Math.max(0, Math.min(100, (temp - 36.5) / 2 * 100)) + '%';
+  $('h-mark').style.left = Math.max(0, Math.min(100, (hum - 40) / 30 * 100)) + '%';
+  $('heater').textContent = heater ? 'กำลังทำงาน' : 'พัก';
+  $('humidifier').textContent = hum < 50 ? 'กำลังทำงาน' : 'สแตนด์บาย';
+  const w = Math.max(['good', 'watch', 'none'].indexOf(ts), ['good', 'watch', 'none'].indexOf(hs)), k = ['good', 'watch', 'none'][w];
+  $('overall').className = 'chip ' + ST[k]; $('overall').textContent = 'ตู้ฟัก: ' + ['ปกติ', 'เฝ้าระวัง', 'ผิดปกติ'][w];
+}
+
+/* ---------- กราฟ 2 แกน ---------- */
+const lbl = t => new Date(t).toLocaleTimeString('th-TH', {hour12: false});
+const now = Date.now(), L = [], T = [], H = [];
+for (let i = 39; i >= 0; i--) { step(); L.push(lbl(now - i * 3000)); T.push(+temp.toFixed(2)); H.push(+hum.toFixed(1)); }
+const axis = (pos, min, max, color, grid) => ({position: pos, min, max, ticks: {color, font: {size: 12}}, grid: grid ? {color: '#f1f5f9'} : {drawOnChartArea: false}, border: {display: false}});
+Chart.defaults.font.family = "'Kanit', sans-serif";
+const chart = new Chart($('envChart'), {
+  type: 'line',
+  data: {labels: L, datasets: [
+    {data: T, yAxisID: 'y', borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.1)', fill: true, tension: .35, borderWidth: 2, pointRadius: 0},
+    {data: H, yAxisID: 'y1', borderColor: '#0ea5e9', tension: .35, borderWidth: 2, pointRadius: 0, borderDash: [5, 5]}]},
+  options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {intersect: false, mode: 'index'}, plugins: {legend: {display: false}},
+    scales: {x: {grid: {display: false}, border: {display: false}, ticks: {maxTicksLimit: 6, color: '#64748b', font: {size: 12}}}, y: axis('left', 36.5, 38.5, '#b45309', true), y1: axis('right', 40, 70, '#0369a1', false)}}
+});
+if (document.fonts) document.fonts.ready.then(() => chart.update('none'));
+update();
+setInterval(() => {
+  step(); update();
+  [L, T, H].forEach(a => a.shift()); L.push(lbl(Date.now())); T.push(+temp.toFixed(2)); H.push(+hum.toFixed(1));
+  chart.update('none');
+}, 3000);
+// Switch panels without recreating controls or losing the selected egg/day.
+const viewTabs = Array.from(document.querySelectorAll('[data-view]'));
+function showView(name, focusTab = false) {
+  if (!viewTabs.some(tab => tab.dataset.view === name)) return;
+  viewTabs.forEach(tab => {
+    const active = tab.dataset.view === name;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    $(tab.getAttribute('aria-controls')).hidden = !active;
+    if (active && focusTab) tab.focus();
+  });
+  requestAnimationFrame(() => {
+    if (name === 'overview') chart.resize();
+    if (name === 'timeline') center(selDay, true);
+  });
+}
+viewTabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => showView(tab.dataset.view));
+  tab.addEventListener('keydown', event => {
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % viewTabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + viewTabs.length - 1) % viewTabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = viewTabs.length - 1;
+    else return;
+    event.preventDefault();
+    showView(viewTabs[next].dataset.view, true);
+  });
+});
+
+</script>
+</body>
+</html>
+
