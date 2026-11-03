@@ -88,13 +88,14 @@ button,input,select,textarea{font-family:inherit}
 @media(prefers-reduced-motion:reduce){.view-panel:not([hidden]){animation:none}.view-tab:active{transform:none}}
 #panel-overview .column>.card{flex:1}
 @media(max-width:480px){.view-tabs{gap:.25rem;padding:.35rem}.view-tab{padding:.75rem .3rem;font-size:.8rem}}
+.arrow:disabled{opacity:.35;cursor:default}
 </style>
 </head>
 <body class="min-h-screen p-4 md:p-6 text-slate-700">
 <div class="max-w-[1400px] mx-auto space-y-6">
 <header class="card topbar flex flex-wrap items-center justify-between gap-4 lg:sticky lg:top-4 z-50">
  <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white text-xl shadow-lg shadow-blue-200">🥚</div><div><h1 class="font-bold text-slate-800 text-lg leading-tight">ตู้ฟักและตรวจคุณภาพไข่ไก่ (16 ฟอง)</h1></div></div>
- <div class="hidden xl:block bg-slate-100 px-4 py-2 rounded-full text-xs text-slate-600">ชุด <b>#EGG-2025-07</b> · เริ่ม <b>1 ก.ค. 2568</b></div>
+ <div class="hidden xl:block bg-slate-100 px-4 py-2 rounded-full text-xs text-slate-600">ชุด <b>#EGG-2025-07</b> · เริ่ม <b id="batch-start">ยังไม่เลือกวัน</b></div>
  <div class="flex flex-wrap items-center gap-3"><div class="text-right"><p id="date" class="text-xs text-slate-400"></p><p id="time" class="num text-slate-500 text-sm"></p></div><button id="btn-candling" class="cbtn" aria-pressed="false">💡 ส่องไฟประมวลผล</button></div>
 </header>
 <div id="candling-alert" class="hidden bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 text-amber-800 font-semibold"><span class="live inline-block w-2 h-2 rounded-full bg-amber-500 mr-2"></span>ระบบกล้อง AI กำลังส่องไฟประมวลผลตัวอ่อนในไข่ทั้ง 16 ฟอง...</div>
@@ -150,7 +151,13 @@ button,input,select,textarea{font-family:inherit}
 <div id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline" tabindex="0" class="view-panel" hidden>   <div class="card min-w-0">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <span class="font-semibold text-slate-800">📅 ระยะเวลาการฟัก</span>
-      <span class="text-sm text-slate-500">คาดว่าฟักวันที่ <b id="hatch" class="text-slate-800"></b></span>
+      <span class="text-sm text-slate-500">วันที่ 21 ของการฟัก <b id="hatch" class="text-slate-800"></b></span>
+    </div>
+    <div class="bg-blue-50 rounded-2xl p-4 mt-4">
+      <label for="start-date" class="block font-medium text-slate-800 mb-2">เลือกวันแรกที่เริ่มฟักไข่</label>
+      <input id="start-date" type="date" class="bg-white border border-blue-200 rounded-xl px-3 py-2 w-full sm:w-auto text-slate-800" aria-describedby="start-help start-status">
+      <p id="start-help" class="text-sm text-slate-500 mt-2">นับวันเริ่มเป็นวันที่ 1 ถึงวันที่ 21 · บันทึกไว้ในเบราว์เซอร์นี้</p>
+      <p id="start-status" class="text-sm text-blue-700 mt-1" role="status"></p>
     </div>
     <p class="mt-3"><span id="day-now" class="num text-5xl font-bold text-slate-900"></span><span class="text-xl text-slate-500"> / 21 วัน</span> <span id="remain" class="chip st-good ml-2"></span></p>
     <span class="bar mt-3" style="--c:#2563eb"><i id="prog"></i></span>
@@ -175,36 +182,83 @@ const fDate = new Intl.DateTimeFormat('th-TH', {dateStyle:'full'});
 const fTime = new Intl.DateTimeFormat('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'});
 (function tick(){ const n = new Date(); $('date').textContent = fDate.format(n); $('time').textContent = fTime.format(n); setTimeout(tick, 1000); })();
 
-/* ---------- ระยะเวลาฟัก (ค่าจำลอง: ตอนนี้วันที่ 14) ---------- */
-const START = new Date(2025, 6, 1), TOTAL = 21, TODAY = 14;
+/* ---------- Calendar-based incubation, persisted on this browser ---------- */
+const TOTAL = 21, START_KEY = 'egg-incubator-start-date-v1';
 const fmt = d => d.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
-const dayDate = n => { const d = new Date(START); d.setDate(d.getDate() + n - 1); return d; };
-$('day-now').textContent = TODAY;
-$('remain').textContent = 'เหลืออีก ' + (TOTAL - TODAY) + ' วัน';
-$('prog').style.width = (TODAY / TOTAL * 100) + '%';
-$('hatch').textContent = fmt(dayDate(TOTAL + 1));
-
-const wrap = $('day-tabs'); let selDay = TODAY, moved = false;
-for (let i = 1; i <= TOTAL; i++) {
-  const b = document.createElement('button');
-  b.className = 'dt' + (i < TODAY ? ' past' : ''); b.dataset.day = i; b.setAttribute('role', 'tab');
-  b.innerHTML = '<span class="text-xs">วันที่</span><span class="num font-bold text-base">' + i + '</span>' + (i === TODAY ? '<span class="now" title="วันนี้"></span>' : '');
-  b.onclick = () => { if (!moved) pickDay(i, true); };
-  wrap.appendChild(b);
+const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function parseDay(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const [y,m,d] = value.split('-').map(Number);
+  if (y < 1900 || y > 9999) return null;
+  const result = new Date(y,m-1,d);
+  return dateKey(result) === value ? result : null;
 }
+// Compare calendar days, avoiding daylight-saving hour differences.
+const dayNumber = d => Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) / 86400000;
+const incubationDay = (start, now) => dayNumber(now) - dayNumber(start) + 1;
+let START = null, TODAY = 0;
+try { START = parseDay(localStorage.getItem(START_KEY)); } catch (_) {}
+const dayDate = n => { const d = new Date(START); d.setDate(d.getDate() + n - 1); return d; };
+const wrap = $('day-tabs'); let selDay = 1, moved = false;
+$('start-date').value = START ? dateKey(START) : '';
+$('start-date').min = '1900-01-01';
 function center(d, instant) {
-  const el = wrap.querySelector('[data-day="' + d + '"]'), w = wrap.getBoundingClientRect(), t = el.getBoundingClientRect();
+  const el = wrap.querySelector('[data-day="' + d + '"]');
+  if (!el || !wrap.clientWidth) return;
+  const w = wrap.getBoundingClientRect(), t = el.getBoundingClientRect();
   wrap.scrollTo({left: wrap.scrollLeft + t.left - w.left - (w.width - t.width) / 2, behavior: instant ? 'auto' : 'smooth'});
 }
 function pickDay(d, scroll) {
-  selDay = d;
-  wrap.querySelectorAll('.dt').forEach(b => b.setAttribute('aria-selected', +b.dataset.day === d));
-  const rel = d === TODAY ? 'วันนี้' : d < TODAY ? 'ผ่านมาแล้ว ' + (TODAY - d) + ' วัน' : 'อีก ' + (d - TODAY) + ' วัน';
-  $('day-note').textContent = 'วันที่ ' + d + ' · ' + fmt(dayDate(d)) + ' · ' + rel;
-  if (scroll) center(d);
+  if (!START) return;
+  selDay = Math.max(1, Math.min(TOTAL, d));
+  wrap.querySelectorAll('.dt').forEach(b => b.setAttribute('aria-selected', +b.dataset.day === selDay));
+  const rel = selDay === TODAY ? 'วันนี้' : selDay < TODAY ? 'ผ่านมาแล้ว ' + (TODAY - selDay) + ' วัน' : 'อีก ' + (selDay - TODAY) + ' วัน';
+  $('day-note').textContent = 'วันที่ ' + selDay + ' · ' + fmt(dayDate(selDay)) + ' · ' + rel;
+  $('day-prev').disabled = selDay === 1;
+  $('day-next').disabled = selDay === TOTAL;
+  if (scroll) center(selDay);
 }
-$('day-prev').onclick = () => pickDay(Math.max(1, selDay - 1), true);
-$('day-next').onclick = () => pickDay(Math.min(TOTAL, selDay + 1), true);
+function renderTimeline(followToday = false) {
+  TODAY = START ? incubationDay(START, new Date()) : 0;
+  $('batch-start').textContent = START ? fmt(START) : 'ยังไม่เลือกวัน';
+  $('day-now').textContent = START ? Math.max(0, Math.min(TOTAL,TODAY)) : '—';
+  $('hatch').textContent = START ? fmt(dayDate(TOTAL)) : '—';
+  $('prog').style.width = (START ? Math.max(0,Math.min(TOTAL,TODAY))/TOTAL*100 : 0) + '%';
+  $('remain').textContent = !START ? 'เลือกวันเริ่มฟักก่อน' : TODAY < 1 ? 'เริ่มในอีก ' + (1-TODAY) + ' วัน' : TODAY > TOTAL ? 'สิ้นสุดรอบ 21 วันแล้ว' : TODAY === TOTAL ? 'วันที่ 21 ของการฟัก' : 'อีก ' + (TOTAL-TODAY) + ' วันถึงวันที่ 21';
+  wrap.innerHTML = '';
+  $('day-prev').disabled = $('day-next').disabled = !START;
+  if (!START) { $('day-note').textContent = 'เลือกวันที่จากปฏิทินเพื่อเริ่มนับรอบฟัก'; return; }
+  if (followToday) selDay = Math.max(1,Math.min(TOTAL,TODAY));
+  for (let i = 1; i <= TOTAL; i++) {
+    const b = document.createElement('button');
+    b.className = 'dt' + (i < TODAY ? ' past' : ''); b.dataset.day = i; b.setAttribute('role','tab');
+    b.setAttribute('aria-label','วันที่ ' + i + ' · ' + fmt(dayDate(i)));
+    b.innerHTML = '<span class="text-xs">วันที่</span><span class="num font-bold text-base">' + i + '</span>' + (i === TODAY ? '<span class="now" title="วันนี้"></span>' : '');
+    b.onclick = () => { if (!moved) pickDay(i,true); };
+    wrap.appendChild(b);
+  }
+  pickDay(selDay); requestAnimationFrame(() => center(selDay,true));
+}
+$('start-date').addEventListener('change', () => {
+  const value = $('start-date').value, chosen = parseDay(value);
+  if (value && !chosen) { $('start-status').textContent = 'กรุณาเลือกวันที่ให้ถูกต้อง'; return; }
+  START = chosen;
+  try {
+    if (START) localStorage.setItem(START_KEY,value); else localStorage.removeItem(START_KEY);
+    $('start-status').textContent = START ? 'บันทึกวันเริ่มฟักแล้ว ระบบจะนับต่ออัตโนมัติ' : 'ล้างวันเริ่มฟักแล้ว';
+  } catch (_) { $('start-status').textContent = 'ใช้วันที่นี้ได้ แต่เบราว์เซอร์ไม่อนุญาตให้บันทึกไว้'; }
+  renderTimeline(true);
+});
+$('day-prev').onclick = () => pickDay(selDay-1,true);
+$('day-next').onclick = () => pickDay(selDay+1,true);
+let lastCalendarDate = dateKey(new Date());
+function refreshCalendar() {
+  const today = dateKey(new Date());
+  if (today !== lastCalendarDate) { lastCalendarDate = today; renderTimeline(true); }
+}
+setInterval(refreshCalendar,30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCalendar(); });
+renderTimeline(true);
 let down = false, sx = 0, sl = 0;
 wrap.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') { down = true; moved = false; sx = e.clientX; sl = wrap.scrollLeft; } });
 addEventListener('pointermove', e => { if (!down) return; const dx = e.clientX - sx; if (Math.abs(dx) > 5) { moved = true; wrap.classList.add('dragging'); } if (moved) wrap.scrollLeft = sl - dx; });
@@ -213,7 +267,7 @@ wrap.addEventListener('wheel', e => {
   const max = wrap.scrollWidth - wrap.clientWidth;
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && ((e.deltaY > 0 && wrap.scrollLeft < max - 1) || (e.deltaY < 0 && wrap.scrollLeft > 0))) { e.preventDefault(); wrap.scrollLeft += e.deltaY; }
 }, {passive: false});
-pickDay(TODAY); requestAnimationFrame(() => center(TODAY, true)); addEventListener('load', () => center(selDay, true));
+addEventListener('load', () => center(selDay, true));
 
 /* ---------- ไข่รายฟอง + AI (ข้อมูลชุดเดียว ใช้ร่วมกันทั้งสถานะและการวิเคราะห์) ---------- */
 const EGGS = [[95,'แข็งแรงดี'],[92,'แข็งแรงดี'],[88,'ปกติ'],[48,'ควรติดตาม'],[94,'แข็งแรงดี'],[91,'ปกติ'],[89,'ปกติ'],[97,'แข็งแรงมาก'],[85,'ปกติ'],[0,'ไม่พบตัวอ่อน'],[90,'ปกติ'],[93,'แข็งแรงดี'],[96,'แข็งแรงดี'],[87,'ปกติ'],[92,'ปกติ'],[95,'แข็งแรงดี']]
