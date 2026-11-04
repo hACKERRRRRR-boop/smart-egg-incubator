@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#eef2f6"><title>เข้าสู่ระบบ | ตู้ฟักไข่อัจฉริยะ</title>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;background:#eef2f6;color:#334155;font-family:Kanit,sans-serif}.card{width:100%;max-width:440px;padding:36px;background:white;border-radius:32px;box-shadow:0 12px 40px #0f172a08;animation:enter .35s ease-out}.logo{display:grid;place-items:center;width:64px;height:64px;border-radius:22px;background:#eff6ff;font-size:34px;margin-bottom:22px}h1{font-size:26px;margin:0 0 8px;color:#0f172a;font-weight:600}.sub{font-size:15px;color:#64748b;line-height:1.65;margin:0 0 26px}label{display:block;font-size:14px;font-weight:500;margin:16px 0 8px}input{width:100%;padding:13px 14px;border:1px solid #cbd5e1;border-radius:12px;font:inherit;background:#f8fafc;color:#0f172a;min-width:0}input:focus{outline:3px solid #dbeafe;border-color:#2563eb}.password{position:relative}.password input{padding-right:66px}.show{position:absolute;right:8px;top:7px;background:none;border:0;padding:7px;color:#2563eb;font:inherit;cursor:pointer}.submit{width:100%;border:0;border-radius:14px;padding:14px;background:#2563eb;color:white;font:inherit;font-weight:500;margin-top:20px;cursor:pointer;transition:transform .15s,background .15s}.submit:hover{background:#1d4ed8}.submit:active{transform:scale(.98)}.submit:disabled{opacity:.65;cursor:wait}#message{font-size:14px;color:#be123c;min-height:22px;margin:14px 0 0}.note{border-top:1px solid #f1f5f9;margin:18px 0 0;padding-top:16px;font-size:12px;color:#94a3b8}button:focus-visible{outline:3px solid #93c5fd;outline-offset:3px}@keyframes enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}@media(max-width:480px){.card{padding:26px}}
+</style></head><body><main class="card"><div class="logo" aria-hidden="true">🥚</div><h1>เข้าสู่ระบบ</h1><p class="sub">ตู้ตรวจคุณภาพเชื้อและฟักไข่ไก่พันธุ์ดี<br>ด้วยปัญญาประดิษฐ์</p>
+<form id="login-form"><label for="username">ชื่อผู้ใช้</label><input id="username" name="username" autocomplete="username" required maxlength="32" autocapitalize="none" spellcheck="false" placeholder="ชื่อผู้ใช้ของคุณ">
+<label for="password">รหัสผ่าน</label><div class="password"><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256"><button type="button" id="show" class="show" aria-pressed="false" aria-label="แสดงรหัสผ่าน">แสดง</button></div>
+<button type="submit" class="submit" id="submit">เข้าสู่ Dashboard →</button><p id="message" role="status" aria-live="polite"></p></form><p class="note">ยังไม่มีบัญชี? <a href="/register">สมัครสมาชิก</a></p></main>
+<script>
+const form=document.getElementById('login-form'),message=document.getElementById('message'),submit=document.getElementById('submit');
+document.getElementById('show').onclick=function(){const input=document.getElementById('password'),show=input.type==='password';input.type=show?'text':'password';this.textContent=show?'ซ่อน':'แสดง';this.setAttribute('aria-pressed',String(show));this.setAttribute('aria-label',show?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน');};
+form.onsubmit=async event=>{
+  event.preventDefault();submit.disabled=true;message.textContent='กำลังตรวจสอบ…';
+  try{
+    const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.username.value,password:form.password.value}),signal:AbortSignal.timeout(10000)});
+    if(response.ok){form.password.value='';location.replace('/');return;}
+    message.textContent=response.status===403?'บัญชีของคุณกำลังรอผู้ดูแลอนุมัติ':response.status===429?'ลองเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 15 นาที':response.status===401?'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง':'ระบบเข้าสู่ระบบยังไม่พร้อม กรุณาตรวจฐานข้อมูลและรัน db:migrate';
+  }catch{message.textContent='เชื่อมต่อ Backend ไม่สำเร็จ กรุณาลองใหม่';}
+  finally{submit.disabled=false;}
+};
+</script></body></html>

@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#eef2f6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ตู้ฟักไข่">
+<title>ตู้ฟักไข่อัจฉริยะ (16 ฟอง)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{font-family:'Kanit',sans-serif;background:#eef2f6}
+.num{font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums}
+.card{background:#fff;border-radius:1.5rem;box-shadow:0 4px 20px rgba(15,23,42,.05);padding:1.25rem}
+@media(max-width:767px){body[class]{padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}}
+@media(hover:none){.egg:hover{transform:none}}
+button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{cursor:pointer}button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+@keyframes blink{50%{opacity:.3}}.live{animation:blink 1.8s infinite}
+@media(prefers-reduced-motion:reduce){.live{animation:none}*{transition:none!important}}
+.st-good{--c:#10b981;--bg:#ecfdf5;--tx:#047857}
+.st-watch{--c:#f59e0b;--bg:#fffbeb;--tx:#b45309}
+.st-none{--c:#f43f5e;--bg:#fff1f2;--tx:#be123c}
+.chip{background:var(--bg);color:var(--tx);border-radius:999px;padding:2px 10px;font-size:.85rem;font-weight:700;white-space:nowrap}
+.bar{display:block;height:8px;background:#e2e8f0;border-radius:9px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--c);border-radius:9px;transition:width .6s}
+.gauge{position:relative;height:8px;background:#e2e8f0;border-radius:9px}
+.gauge b{position:absolute;top:0;bottom:0;background:#a7f3d0;border-radius:9px}
+.gauge u{position:absolute;top:-4px;width:6px;height:16px;border-radius:4px;background:#0f172a;transform:translateX(-50%);transition:left .6s}
+.tray{background:#e2e8f0;border-radius:1.25rem;padding:.75rem;box-shadow:inset 0 2px 6px rgba(15,23,42,.12)}
+/* Egg silhouette: softly tapered top, full rounded base, centered readings. */
+.egg{aspect-ratio:1/1.25;min-width:0;padding:.5rem .2rem;border-radius:50% 50% 48% 48%/60% 60% 40% 40%;background:var(--bg);border:2px solid var(--c);color:var(--tx);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:transform .15s,box-shadow .15s}
+.egg.st-good{border-color:#5bd6b0;background:#ecfdf5;color:#059669}
+.egg>span{line-height:1.25}
+.egg>span:first-child{font-size:.75rem}
+.egg>span:last-child{font-size:1.125rem}
+.egg.st-none{border-style:dashed;opacity:.75}
+.egg:hover{transform:translateY(-2px)}
+.egg[aria-pressed=true]{box-shadow:0 0 0 3px #fff,0 0 0 6px #2563eb}
+body.candling .egg:not([aria-pressed=true]){box-shadow:inset 0 0 18px 4px rgba(251,191,36,.6)}
+.row{display:grid;grid-template-columns:2.8rem 1fr 3rem;gap:.6rem;align-items:center;width:100%;text-align:left;padding:.5rem .6rem;border-radius:.9rem}
+.row:hover,.row.on{background:#f1f5f9}
+.fchip{border:1px solid #cbd5e1;border-radius:999px;padding:3px 12px;font-size:.85rem;font-weight:600;color:#475569}
+.fchip[aria-pressed=true],.cbtn[aria-pressed=true]{background:#0f172a;color:#fff;border-color:#0f172a}
+.cbtn{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:.45rem 1rem;font-weight:600;font-size:.9rem}
+.arrow{flex:none;width:2.25rem;height:2.25rem;border-radius:999px;background:#f1f5f9;color:#475569;font-size:1.2rem}
+.day-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;cursor:grab}
+.day-scroll.dragging{cursor:grabbing;user-select:none}
+.dt{flex:none;width:3.6rem;height:4rem;border-radius:.85rem;background:#f8fafc;color:#64748b;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;user-select:none}
+.dt.past{background:#ecfdf5;color:#047857}
+.dt[aria-selected=true]{background:#2563eb;color:#fff;box-shadow:0 6px 14px rgba(37,99,235,.3)}
+.dt .now{position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:#10b981;border:2px solid #fff}
+
+/* Theme from index (2): rounded white panels and amber/sky/emerald highlights. */
+.card{border-radius:2rem;box-shadow:0 4px 20px rgba(0,0,0,.03);padding:1.5rem;min-width:0}
+.dashboard{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:1.5rem}
+.column{display:flex;flex-direction:column;gap:1.5rem;min-width:0}
+.topbar{border-radius:999px;padding:.75rem 1.5rem}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.metric{border-radius:1.5rem;padding:1rem;color:#fff;min-height:144px;display:flex;flex-direction:column;justify-content:space-between}
+.metric-label{background:rgba(255,255,255,.2);border-radius:.75rem;padding:.3rem .55rem;font-size:.75rem;font-weight:600;align-self:flex-start}
+.metric-value{font-size:clamp(1.6rem,2.5vw,2.25rem);font-weight:700;line-height:1.3}
+.metric p{font-size:.75rem;margin-top:.35rem;color:rgba(255,255,255,.95)}
+.metric-temp{background:#fbbf24;box-shadow:0 10px 15px -3px #fde68a80}
+.metric-hum{background:#38bdf8;box-shadow:0 10px 15px -3px #bae6fd80}
+.metric-rate{background:#10b981;box-shadow:0 10px 15px -3px #a7f3d080}
+.sensor{background:#f8fafc;border-radius:1rem;padding:1rem;margin-top:1rem;font-size:.875rem}
+.sensor .gauge{margin:1rem 0}
+@media(max-width:1100px) and (min-width:1024px){.metric{padding:.75rem}.metric-label{font-size:.7rem}}
+@media(max-width:1023px){.dashboard{grid-template-columns:1fr}.topbar{border-radius:1.5rem}.metric-value{font-size:2.25rem}}
+@media(max-width:600px){.metrics{gap:.5rem}.metric{padding:.75rem;min-height:135px}.metric-label{font-size:.68rem;padding:.3rem}.metric-value{font-size:1.75rem}.card{padding:1.25rem}.topbar{padding:1rem}.metric p{font-size:.68rem}}
+
+button,input,select,textarea{font-family:inherit}
+
+.view-tabs{display:flex;gap:.5rem;padding:.5rem;background:#fff;border-radius:1.5rem;box-shadow:0 4px 20px rgba(0,0,0,.03)}
+.view-tab{flex:1;padding:.85rem 1rem;border-radius:1rem;color:#64748b;font-weight:500;transition:background .2s,color .2s,transform .15s,box-shadow .2s}
+.view-tab:hover{background:#eff6ff;color:#2563eb}
+.view-tab[aria-selected="true"]{background:#2563eb;color:white;box-shadow:0 4px 12px #2563eb25}
+.view-panel[hidden]{display:none!important}
+/* Category transitions: animate only opacity and transform for smooth mobile rendering. */
+@keyframes category-enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.view-panel:not([hidden]){animation:category-enter .28s cubic-bezier(.22,1,.36,1) both}
+.view-tab:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){.view-panel:not([hidden]){animation:none}.view-tab:active{transform:none}}
+#panel-overview .column>.card{flex:1}
+@media(max-width:480px){.view-tabs{gap:.25rem;padding:.35rem}.view-tab{padding:.75rem .3rem;font-size:.8rem}}
+.arrow:disabled{opacity:.35;cursor:default}
+/* ===== Smooth motion layer ===== */
+:root{--ease:cubic-bezier(.22,1,.36,1)}
+@keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:scale(.55) translateY(12px)}to{opacity:1;transform:none}}
+@keyframes rowIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes dtIn{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes swap{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(16,185,129,.6)}100%{box-shadow:0 0 0 9px rgba(16,185,129,0)}}
+@keyframes glow{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes scan{from{transform:translateY(-110%)}to{transform:translateY(270%)}}
+.swap{animation:swap .45s var(--ease)}
+#heater,#humidifier{display:inline-block}
+
+/* โหลดหน้า: header ไหลลง แล้วการ์ดตัวเลขไล่ขึ้นมา */
+header.card{animation:drop .7s var(--ease) backwards}
+.metric{transition:transform .4s var(--ease),box-shadow .4s var(--ease);animation:rise .8s var(--ease) backwards}
+.metrics .metric:nth-child(2){animation-delay:.08s}
+.metrics .metric:nth-child(3){animation-delay:.16s}
+@media(hover:hover){.metric:hover{transform:translateY(-4px) scale(1.02)}}
+.chip{transition:background-color .45s,color .45s}
+.bar i{transition:width .9s var(--ease),background-color .45s}
+.gauge u{transition:left 1.1s var(--ease)}
+#d-p{transition:color .45s}
+
+/* แท็บหลัก: แถบสีน้ำเงินเลื่อนไปหาแท็บที่เลือก */
+.view-tabs{position:relative;--p:.5rem}
+.tab-ind{position:absolute;top:var(--p);bottom:var(--p);left:0;width:0;border-radius:1rem;background:#2563eb;box-shadow:0 4px 12px #2563eb40;pointer-events:none;transition:transform .55s var(--ease),width .55s var(--ease)}
+.view-tab{position:relative;z-index:1;transition:color .35s,background-color .25s,transform .2s var(--ease)}
+.view-tab[aria-selected="true"],.view-tab[aria-selected="true"]:hover{background:transparent;box-shadow:none;color:#fff}
+@media(max-width:480px){.view-tabs{--p:.35rem}}
+
+/* ไข่รายฟอง */
+.egg{position:relative;transition:transform .35s var(--ease),box-shadow .35s var(--ease),background-color .45s,border-color .45s,opacity .45s}
+.egg:active{transform:scale(.93)}
+.egg[aria-pressed=true],.egg[aria-pressed=true]:hover{transform:translateY(-3px) scale(1.07)}
+.view-panel:not([hidden]) .egg{animation:pop .65s var(--ease) backwards;animation-delay:calc(var(--i)*40ms + .1s)}
+.egg::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;box-shadow:inset 0 0 22px 6px rgba(251,191,36,.7);transition:opacity .6s}
+body.candling .egg:not([aria-pressed=true])::after{animation:glow 2.2s ease-in-out infinite;animation-delay:calc(var(--i)*110ms)}
+.tray{position:relative;overflow:hidden}
+.tray::after{content:"";position:absolute;left:0;right:0;top:0;height:38%;pointer-events:none;opacity:0;background:linear-gradient(to bottom,transparent,rgba(251,191,36,.38),transparent);transition:opacity .5s}
+body.candling .tray::after{opacity:1;animation:scan 2.6s linear infinite}
+body.candling .egg{box-shadow:none}
+body.candling .egg:not([aria-pressed=true]){box-shadow:inset 0 0 18px 4px rgba(251,191,36,.45)}
+#candling-alert:not(.hidden){animation:swap .5s var(--ease)}
+.row{transition:background-color .25s,transform .3s var(--ease);animation:rowIn .5s var(--ease) backwards;animation-delay:calc(var(--i)*28ms)}
+@media(hover:hover){.row:hover{transform:translateX(3px)}}
+.cbtn,.fchip,.arrow{transition:background-color .3s,color .3s,border-color .3s,box-shadow .3s,transform .25s var(--ease),opacity .3s}
+.cbtn:active,.fchip:active,.arrow:active{transform:scale(.94)}
+@media(hover:hover){.cbtn:hover,.arrow:not(:disabled):hover{transform:translateY(-1px)}}
+.cbtn[aria-pressed=true]{box-shadow:0 0 0 4px rgba(37,99,235,.18)}
+
+/* ไทม์ไลน์ */
+.dt{transition:background-color .3s,color .3s,transform .4s var(--ease),box-shadow .4s var(--ease);animation:dtIn .55s var(--ease) backwards;animation-delay:calc(var(--i)*28ms)}
+@media(hover:hover){.dt:hover{transform:translateY(-2px)}}
+.dt[aria-selected=true],.dt[aria-selected=true]:hover{transform:translateY(-3px) scale(1.08)}
+.dt .now{animation:pulseDot 1.8s infinite}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.st-pending{--c:#94a3b8;--bg:#f8fafc;--tx:#64748b}
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-6 text-slate-700">
+<div class="max-w-[1400px] mx-auto space-y-6">
+<header class="card topbar flex flex-wrap items-center justify-between gap-4 lg:sticky lg:top-4 z-50">
+ <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white text-xl shadow-lg shadow-blue-200">🥚</div><div><h1 class="font-bold text-slate-800 text-lg leading-tight">ตู้ตรวจคุณภาพเชื้อและฟักไข่ไก่พันธุ์ดีด้วยปัญญาประดิษฐ์</h1></div></div>
+ <div class="hidden xl:block bg-slate-100 px-4 py-2 rounded-full text-xs text-slate-600">ชุด <b>#EGG-2025-07</b> · เริ่ม <b id="batch-start">ยังไม่เลือกวัน</b></div>
+ <div class="flex flex-wrap items-center gap-3"><div class="text-right"><p id="date" class="text-xs text-slate-400"></p><p id="time" class="num text-slate-500 text-sm"></p></div><button id="btn-candling" class="cbtn" aria-pressed="false">💡 ทดลองแอนิเมชันส่องไฟ</button></div>
+<div class="flex items-center gap-3 text-sm"><span id="login-user" class="text-slate-500"></span><button id="logout" type="button" class="cbtn">ออกจากระบบ</button></div>
+</header>
+<div id="candling-alert" class="hidden bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 text-amber-800 font-semibold"><span class="live inline-block w-2 h-2 rounded-full bg-amber-500 mr-2"></span>ตัวอย่างแอนิเมชันส่องไฟเท่านั้น — ยังไม่สั่งอุปกรณ์หรือประมวลผล AI จริง</div>
+<nav class="view-tabs" role="tablist" aria-label="หมวดข้อมูลตู้ฟักไข่">
+<span class="tab-ind" aria-hidden="true"></span>
+<button id="tab-overview" class="view-tab" type="button" role="tab" aria-controls="panel-overview" aria-selected="true" tabindex="0" data-view="overview">📊 ภาพรวม</button>
+<button id="tab-eggs" class="view-tab" type="button" role="tab" aria-controls="panel-eggs" aria-selected="false" tabindex="-1" data-view="eggs">🥚 ติดตามไข่ / AI</button>
+<button id="tab-timeline" class="view-tab" type="button" role="tab" aria-controls="panel-timeline" aria-selected="false" tabindex="-1" data-view="timeline">📅 ระยะเวลาฟัก</button>
+</nav>
+<main>
+<div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0" class="view-panel dashboard">
+ <div class="column">
+  <div class="metrics">
+   <div class="metric metric-temp"><span class="metric-label">🌡️ อุณหภูมิ</span><div><span id="t-val" class="num metric-value">—</span> °C<p>เป้าหมาย 37.5 ±0.3</p></div></div>
+   <div class="metric metric-hum"><span class="metric-label">💧 ความชื้น</span><div><span id="h-val" class="num metric-value">—</span> %<p>เป้าหมาย 50–60 ±2%</p></div></div>
+   <div class="metric metric-rate"><span class="metric-label">✨ โอกาสฟัก</span><div><span id="avg" class="num metric-value">—</span><p>โดยประมาณจาก AI</p></div></div>
+  </div>
+  <section class="card">
+   <div class="flex flex-wrap justify-between items-start gap-3 mb-6"><div><p class="text-slate-400 text-sm">ข้อมูลเชิงลึก</p><h2 class="text-xl font-bold text-slate-800 mt-1">ภาพรวมตู้ฟักไข่</h2></div><span id="overall" class="chip st-good"></span></div>
+   <div class="sensor"><div class="flex flex-wrap justify-between gap-2"><b>🌡️ อุณหภูมิ</b><span id="t-chip" class="chip"></span></div><p class="mt-3 flex justify-between gap-2"><span>ต่ำสุด: <b id="t-min" class="num">—</b> °C</span><span>สูงสุด: <b id="t-max" class="num">—</b> °C</span></p><div class="gauge"><b id="t-band"></b><u id="t-mark"></u></div><p>ฮีตเตอร์อินฟราเรด: <b id="heater" class="text-amber-600">—</b></p></div>
+   <div class="sensor"><div class="flex flex-wrap justify-between gap-2"><b>💧 ความชื้น</b><span id="h-chip" class="chip"></span></div><p class="mt-3 flex justify-between gap-2"><span>ต่ำสุด: <b id="h-min" class="num">—</b> %</span><span>สูงสุด: <b id="h-max" class="num">—</b> %</span></p><div class="gauge"><b id="h-band"></b><u id="h-mark"></u></div><p>เครื่องทำความชื้น: <b id="humidifier">—</b></p></div>
+
+  </section>
+ </div>
+<div class="column"><section class="card">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <h2 class="font-bold text-slate-900 text-lg">📈 แนวโน้มอุณหภูมิและความชื้น</h2>
+    <div class="flex gap-4 text-sm text-slate-600">
+      <span><i class="inline-block w-3 h-1 bg-amber-400 mr-1.5 align-middle"></i>อุณหภูมิ (°C, แกนซ้าย)</span>
+      <span><i class="inline-block w-3 h-1 bg-sky-400 mr-1.5 align-middle"></i>ความชื้น (%, แกนขวา)</span>
+    </div>
+  </div>
+  <div class="relative h-48 sm:h-56"><canvas id="envChart"></canvas></div>
+  <p class="text-xs text-slate-500 mt-2">ข้อมูลที่บันทึกในฐานข้อมูล · ตรวจข้อมูลใหม่ทุก 3 วินาที</p>
+</section></div></div>
+<div id="panel-eggs" role="tabpanel" aria-labelledby="tab-eggs" tabindex="0" class="view-panel" hidden><!-- ไข่รายฟอง + วิเคราะห์ -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+  <div class="card lg:col-span-5">
+    <h2 class="font-bold text-slate-900 text-lg">สถานะรายฟอง</h2>
+    <div id="counts" class="flex flex-wrap gap-x-5 gap-y-2 mt-3 mb-4"></div>
+    <div id="tray" class="tray grid grid-cols-4 gap-3 max-w-[440px] mx-auto"></div>
+    <p class="text-sm text-slate-500 mt-3 text-center">กดที่ไข่เพื่อดูผลวิเคราะห์ของฟองนั้น</p>
+  </div>
+  <div class="card lg:col-span-7">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="font-bold text-slate-900 text-lg">🤖 AI วิเคราะห์รายฟอง <span class="text-xs font-medium text-slate-500 border border-slate-200 rounded-md px-2 py-0.5 ml-1 align-middle">YOLOv8-nano</span></h2>
+      <p class="text-sm text-slate-500">โอกาสฟักเฉลี่ย <b id="avg-detail" class="num text-emerald-600 text-lg">—</b></p>
+    </div>
+    <div id="detail" class="mt-4"></div>
+    <div class="flex gap-2 mt-5 mb-2" id="filters"></div>
+    <div id="list" class="grid sm:grid-cols-2 gap-x-4 gap-y-1"></div>
+  </div>
+</section></div>
+<div id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline" tabindex="0" class="view-panel" hidden>   <div class="card min-w-0">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <span class="font-semibold text-slate-800">📅 ระยะเวลาการฟัก</span>
+      <span class="text-sm text-slate-500">วันที่ 21 ของการฟัก <b id="hatch" class="text-slate-800"></b></span>
+    </div>
+    <div class="bg-blue-50 rounded-2xl p-4 mt-4">
+      <label for="start-date" class="block font-medium text-slate-800 mb-2">เลือกวันแรกที่เริ่มฟักไข่</label>
+      <input id="start-date" type="date" class="bg-white border border-blue-200 rounded-xl px-3 py-2 w-full sm:w-auto text-slate-800" aria-describedby="start-help start-status">
+      <p id="start-help" class="text-sm text-slate-500 mt-2">นับวันเริ่มเป็นวันที่ 1 ถึงวันที่ 21 · บันทึกวันเริ่มในฐานข้อมูลของรอบฟักนี้</p>
+      <p id="start-status" class="text-sm text-blue-700 mt-1" role="status"></p>
+    </div>
+    <p class="mt-3"><span id="day-now" class="num text-5xl font-bold text-slate-900"></span><span class="text-xl text-slate-500"> / 21 วัน</span> <span id="remain" class="chip st-good ml-2"></span></p>
+    <span class="bar mt-3" style="--c:#2563eb"><i id="prog"></i></span>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="arrow" id="day-prev" aria-label="วันก่อนหน้า">‹</button>
+      <div id="day-tabs" role="tablist" class="day-scroll flex gap-2 overflow-x-auto flex-1 min-w-0 pt-2 pb-3 px-1"></div>
+      <button class="arrow" id="day-next" aria-label="วันถัดไป">›</button>
+    </div>
+    <p id="day-note" class="text-sm text-slate-600 mt-1"></p>
+  </div></div>
+</main>
+<p class="text-xs text-slate-500 flex items-center justify-center gap-2"><span id="mqtt-indicator" class="w-2 h-2 rounded-full bg-red-500"></span><span id="mqtt-status" role="status" aria-live="polite">กำลังเชื่อมต่อ Backend…</span></p>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const RM = matchMedia('(prefers-reduced-motion:reduce)').matches;
+/* นับตัวเลขขึ้น/ลงแบบลื่นไหล */
+function tween(el, to, dec = 0, suf = '', dur = 900) {
+  const from = el._v ?? 0; el._v = to; cancelAnimationFrame(el._r);
+  if (RM || from === to) { el.textContent = to.toFixed(dec) + suf; return; }
+  const t0 = performance.now();
+  (function f(t) {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = (from + (to - from) * e).toFixed(dec) + suf;
+    if (p < 1) el._r = requestAnimationFrame(f);
+  })(t0);
+}
+/* เปลี่ยนข้อความพร้อมเอฟเฟกต์เลื่อนเข้า */
+function setText(el, txt) {
+  if (el.textContent === txt) return;
+  el.textContent = txt;
+  if (RM) return;
+  el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+}
+function replayCounts(root) {
+  root.querySelectorAll('[data-count]').forEach(el => { el._v = 0; tween(el, +el.dataset.count, +(el.dataset.dec || 0), el.dataset.suf || '', 1200); });
+}
+function replayBars(root) {
+  root.querySelectorAll('.bar i').forEach(el => {
+    const w = el.style.width; el.style.transition = 'none'; el.style.width = '0%'; void el.offsetWidth; el.style.transition = '';
+    requestAnimationFrame(() => el.style.width = w);
+  });
+}
+const ST = {good:'st-good', watch:'st-watch', none:'st-none'};
+const LBL = {good:'สมบูรณ์', watch:'ควรติดตาม', none:'ไม่พบตัวอ่อน'};
+const ADV = {good:'ตัวอ่อนพัฒนาตามปกติ ไม่ต้องดำเนินการ', watch:'ตัวอ่อนโตช้ากว่าฟองอื่น ควรส่องไฟซ้ำและเฝ้าดูต่อ', none:'ไม่พบตัวอ่อนจากภาพส่องไฟ พิจารณานำออกจากตู้'};
+
+/* ---------- วันที่/เวลาเรียลไทม์ ---------- */
+const fDate = new Intl.DateTimeFormat('th-TH', {dateStyle:'full'});
+const fTime = new Intl.DateTimeFormat('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'});
+(function tick(){ const n = new Date(); $('date').textContent = fDate.format(n); $('time').textContent = fTime.format(n); setTimeout(tick, 1000); })();
+
+/* ---------- Calendar-based incubation, persisted on this browser ---------- */
+const TOTAL = 21; let activeBatchId = null, savingDate = false, canManage = false;
+const fmt = d => d.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
+const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function parseDay(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const [y,m,d] = value.split('-').map(Number);
+  if (y < 1900 || y > 9999) return null;
+  const result = new Date(y,m-1,d);
+  return dateKey(result) === value ? result : null;
+}
+// Compare calendar days, avoiding daylight-saving hour differences.
+const dayNumber = d => Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) / 86400000;
+const incubationDay = (start, now) => dayNumber(now) - dayNumber(start) + 1;
+let START = null, TODAY = 0;
+$('start-date').disabled = true;
+const dayDate = n => { const d = new Date(START); d.setDate(d.getDate() + n - 1); return d; };
+const wrap = $('day-tabs'); let selDay = 1, moved = false;
+$('start-date').value = START ? dateKey(START) : '';
+$('start-date').min = '1900-01-01';
+function center(d, instant) {
+  const el = wrap.querySelector('[data-day="' + d + '"]');
+  if (!el || !wrap.clientWidth) return;
+  const w = wrap.getBoundingClientRect(), t = el.getBoundingClientRect();
+  wrap.scrollTo({left: wrap.scrollLeft + t.left - w.left - (w.width - t.width) / 2, behavior: instant ? 'auto' : 'smooth'});
+}
+function pickDay(d, scroll) {
+  if (!START) return;
+  selDay = Math.max(1, Math.min(TOTAL, d));
+  wrap.querySelectorAll('.dt').forEach(b => b.setAttribute('aria-selected', +b.dataset.day === selDay));
+  const rel = selDay === TODAY ? 'วันนี้' : selDay < TODAY ? 'ผ่านมาแล้ว ' + (TODAY - selDay) + ' วัน' : 'อีก ' + (selDay - TODAY) + ' วัน';
+  setText($('day-note'), 'วันที่ ' + selDay + ' · ' + fmt(dayDate(selDay)) + ' · ' + rel);
+  $('day-prev').disabled = selDay === 1;
+  $('day-next').disabled = selDay === TOTAL;
+  if (scroll) center(selDay);
+}
+function renderTimeline(followToday = false) {
+  TODAY = START ? incubationDay(START, new Date()) : 0;
+  $('batch-start').textContent = START ? fmt(START) : 'ยังไม่เลือกวัน';
+  if (START) tween($('day-now'), Math.max(0, Math.min(TOTAL,TODAY)), 0, '', 900); else { cancelAnimationFrame($('day-now')._r); $('day-now')._v = 0; $('day-now').textContent = '—'; }
+  $('hatch').textContent = START ? fmt(dayDate(TOTAL)) : '—';
+  $('prog').style.width = (START ? Math.max(0,Math.min(TOTAL,TODAY))/TOTAL*100 : 0) + '%';
+  $('remain').textContent = !START ? 'เลือกวันเริ่มฟักก่อน' : TODAY < 1 ? 'เริ่มในอีก ' + (1-TODAY) + ' วัน' : TODAY > TOTAL ? 'สิ้นสุดรอบ 21 วันแล้ว' : TODAY === TOTAL ? 'วันที่ 21 ของการฟัก' : 'อีก ' + (TOTAL-TODAY) + ' วันถึงวันที่ 21';
+  wrap.innerHTML = '';
+  $('day-prev').disabled = $('day-next').disabled = !START;
+  if (!START) { $('day-note').textContent = 'เลือกวันที่จากปฏิทินเพื่อเริ่มนับรอบฟัก'; return; }
+  if (followToday) selDay = Math.max(1,Math.min(TOTAL,TODAY));
+  for (let i = 1; i <= TOTAL; i++) {
+    const b = document.createElement('button');
+    b.className = 'dt' + (i < TODAY ? ' past' : ''); b.style.setProperty('--i', i); b.dataset.day = i; b.setAttribute('role','tab');
+    b.setAttribute('aria-label','วันที่ ' + i + ' · ' + fmt(dayDate(i)));
+    b.innerHTML = '<span class="text-xs">วันที่</span><span class="num font-bold text-base">' + i + '</span>' + (i === TODAY ? '<span class="now" title="วันนี้"></span>' : '');
+    b.onclick = () => { if (!moved) pickDay(i,true); };
+    wrap.appendChild(b);
+  }
+  pickDay(selDay); requestAnimationFrame(() => center(selDay,true));
+}
+$('start-date').addEventListener('change', async () => {
+  if(!canManage)return;
+  const value = $('start-date').value;
+  if (!parseDay(value)) { $('start-date').value = START ? dateKey(START) : ''; $('start-status').textContent = 'กรุณาเลือกวันเริ่มฟักที่ถูกต้อง'; return; }
+  savingDate = true; $('start-date').disabled = true;
+  try {
+    const response = await api('/api/incubators/1/batch', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({startDate:value,batchId:activeBatchId})});
+    applyBatch(response.data.activeBatch);
+    $('start-status').textContent = 'บันทึกวันเริ่มฟักในฐานข้อมูลแล้ว';
+  } catch (error) {
+    $('start-date').value = START ? dateKey(START) : '';
+    $('start-status').textContent = 'บันทึกไม่สำเร็จ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่';
+  } finally { savingDate = false; $('start-date').disabled = !activeBatchId || !canManage; }
+});
+$('day-prev').onclick = () => pickDay(selDay-1,true);
+$('day-next').onclick = () => pickDay(selDay+1,true);
+let lastCalendarDate = dateKey(new Date());
+function refreshCalendar() {
+  const today = dateKey(new Date());
+  if (today !== lastCalendarDate) { lastCalendarDate = today; renderTimeline(true); }
+}
+setInterval(refreshCalendar,30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCalendar(); });
+renderTimeline(true);
+let down = false, sx = 0, sl = 0;
+wrap.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') { down = true; moved = false; sx = e.clientX; sl = wrap.scrollLeft; } });
+addEventListener('pointermove', e => { if (!down) return; const dx = e.clientX - sx; if (Math.abs(dx) > 5) { moved = true; wrap.classList.add('dragging'); } if (moved) wrap.scrollLeft = sl - dx; });
+addEventListener('pointerup', () => { if (down) { down = false; wrap.classList.remove('dragging'); setTimeout(() => moved = false, 0); } });
+wrap.addEventListener('wheel', e => {
+  const max = wrap.scrollWidth - wrap.clientWidth;
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && ((e.deltaY > 0 && wrap.scrollLeft < max - 1) || (e.deltaY < 0 && wrap.scrollLeft > 0))) { e.preventDefault(); wrap.scrollLeft += e.deltaY; }
+}, {passive: false});
+addEventListener('load', () => center(selDay, true));
+
+/* ---------- ไข่รายฟอง + AI (ข้อมูลชุดเดียว ใช้ร่วมกันทั้งสถานะและการวิเคราะห์) ---------- */
+let EGGS = [], sel = 0, filter = 'all';
+const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ST.pending = 'st-pending'; LBL.pending = 'รอผล'; ADV.pending = 'ยังไม่มีผลวิเคราะห์สำหรับไข่ฟองนี้';
+const pct = e => e.p === null || e.st === 'none' ? '—' : e.p + '%';
+// สร้างโครงครั้งเดียว แล้วอัปเดตเฉพาะส่วนที่เปลี่ยน เพื่อให้ transition ทำงานต่อเนื่อง
+function buildEggs() {
+  $('counts').innerHTML = Object.keys(ST).map(k => `<div class="${ST[k]} flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:var(--c)"></span><span class="num font-bold text-xl text-slate-900" data-count="${EGGS.filter(e => e.st === k).length}">0</span><span class="text-sm text-slate-600">${LBL[k]}</span></div>`).join('');
+  $('tray').innerHTML = EGGS.map((e, i) => `<button class="egg ${ST[e.st]}" data-i="${i}" style="--i:${i}" aria-pressed="false" aria-label="ฟองที่ ${e.n} ${LBL[e.st]} ${e.p}%"><span class="num text-xs font-bold">#${e.n}</span><span class="num text-lg font-bold">${pct(e)}</span></button>`).join('');
+  $('detail').innerHTML = `<div id="d-card" class="bg-slate-50 rounded-2xl p-4"><div class="flex items-center justify-between gap-3"><div><p class="text-sm text-slate-500">ฟองที่</p><p id="d-n" class="num text-3xl font-bold text-slate-900"></p></div><div class="text-right"><span id="d-t" class="chip"></span><p id="d-p" class="num text-3xl font-bold mt-1" style="color:var(--tx)">0%</p><p class="text-xs text-slate-500">โอกาสฟัก</p></div></div><span class="bar mt-3"><i id="d-bar" style="width:0%"></i></span><p id="d-adv" class="text-slate-700 mt-3"></p></div>`;
+  const bad = EGGS.filter(x => ['watch','none'].includes(x.st)).length;
+  $('filters').innerHTML = `<button class="fchip" data-f="all" aria-pressed="${filter === 'all'}">ทั้งหมด ${EGGS.length}</button><button class="fchip" data-f="watch" aria-pressed="${filter === 'watch'}">ต้องติดตาม ${bad}</button>`;
+}
+function renderList() {
+  $('list').innerHTML = EGGS.map((x, i) => [x, i]).filter(([x]) => filter === 'all' || ['watch','none'].includes(x.st)).map(([x, i], n) => `<button class="row ${ST[x.st]} ${i === sel ? 'on' : ''}" data-i="${i}" style="--i:${n}"><span class="num font-bold">#${x.n}</span><span><span class="text-sm text-slate-700">${escapeHtml(x.t)}</span><span class="bar mt-1"><i data-w="${x.p ?? 0}" style="width:0%"></i></span></span><span class="num font-bold text-right" style="color:var(--tx)">${x.p === null ? '—' : x.p + '%'}</span></button>`).join('');
+  requestAnimationFrame(() => requestAnimationFrame(() => $('list').querySelectorAll('i[data-w]').forEach(i => i.style.width = i.dataset.w + '%')));
+}
+function updateEggs() {
+  const e = EGGS[sel]; if (!e) return;
+  $('tray').querySelectorAll('.egg').forEach((b, i) => b.setAttribute('aria-pressed', i === sel));
+  $('list').querySelectorAll('.row').forEach(r => r.classList.toggle('on', +r.dataset.i === sel));
+  $('d-card').className = ST[e.st] + ' bg-slate-50 rounded-2xl p-4';
+  setText($('d-n'), '#' + e.n); setText($('d-t'), e.t); setText($('d-adv'), ADV[e.st]);
+  if (e.p === null) { cancelAnimationFrame($('d-p')._r); $('d-p').textContent = '—'; } else tween($('d-p'), e.p, 0, '%', 700);
+  $('d-bar').style.width = (e.p ?? 0) + '%';
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-i],[data-f]'); if (!b) return;
+  if (b.dataset.f) {
+    filter = b.dataset.f;
+    $('filters').querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-pressed', x.dataset.f === filter));
+    renderList();
+  } else { sel = +b.dataset.i; updateEggs(); }
+});
+$('detail').textContent = 'กำลังโหลดข้อมูลไข่…';
+
+/* ---------- ส่องไฟ ---------- */
+$('btn-candling').onclick = function () {
+  const on = document.body.classList.toggle('candling');
+  this.setAttribute('aria-pressed', on); $('candling-alert').classList.toggle('hidden', !on);
+};
+
+/* ---------- อุณหภูมิ/ความชื้น (ข้อมูลจำลอง — ต่อ MQTT แล้วเรียก update(temp, hum) แทน) ---------- */
+const bandSet = (id, min, max, lo, hi) => { const b = $(id); b.style.left = (lo - min) / (max - min) * 100 + '%'; b.style.width = (hi - lo) / (max - min) * 100 + '%'; };
+bandSet('t-band', 36.5, 38.5, 37.2, 37.8); bandSet('h-band', 40, 70, 50, 60);
+const grade = (v, c, tol, warn) => { const d = Math.abs(v - c); return d <= tol ? 'good' : d <= warn ? 'watch' : 'none'; };
+const word = (s, v, c) => s === 'good' ? 'ปกติ' : v > c ? 'สูงกว่าเป้า' : 'ต่ำกว่าเป้า';
+let temp = null, hum = null, tMin = null, tMax = null, hMin = null, hMax = null;
+function update() {
+  const ts = grade(temp, 37.5, .3, .5), hs = grade(hum, 55, 5, 7);
+  tween($('t-val'), temp, 1); tween($('h-val'), hum, 1);
+  tween($('t-min'), tMin, 1); tween($('t-max'), tMax, 1);
+  tween($('h-min'), hMin, 1); tween($('h-max'), hMax, 1);
+  $('t-chip').className = 'chip ' + ST[ts]; setText($('t-chip'), word(ts, temp, 37.5));
+  $('h-chip').className = 'chip ' + ST[hs]; setText($('h-chip'), word(hs, hum, 55));
+  $('t-mark').style.left = Math.max(0, Math.min(100, (temp - 36.5) / 2 * 100)) + '%';
+  $('h-mark').style.left = Math.max(0, Math.min(100, (hum - 40) / 30 * 100)) + '%';
+
+  const w = Math.max(['good', 'watch', 'none'].indexOf(ts), ['good', 'watch', 'none'].indexOf(hs)), k = ['good', 'watch', 'none'][w];
+  $('overall').className = 'chip ' + ST[k]; setText($('overall'), 'ตู้ฟัก: ' + ['ปกติ', 'เฝ้าระวัง', 'ผิดปกติ'][w]);
+}
+
+/* ---------- กราฟ 2 แกน ---------- */
+const lbl = t => new Date(t).toLocaleTimeString('th-TH', {hour12: false});
+const L = [], T = [], H = [];
+const axis = (pos, min, max, color, grid) => ({position: pos, min, max, ticks: {color, font: {size: 12}}, grid: grid ? {color: '#f1f5f9'} : {drawOnChartArea: false}, border: {display: false}});
+Chart.defaults.font.family = "'Kanit', sans-serif";
+const chart = new Chart($('envChart'), {
+  type: 'line',
+  data: {labels: L, datasets: [
+    {data: T, yAxisID: 'y', borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.1)', fill: true, tension: .35, borderWidth: 2, pointRadius: 0},
+    {data: H, yAxisID: 'y1', borderColor: '#0ea5e9', tension: .35, borderWidth: 2, pointRadius: 0, borderDash: [5, 5]}]},
+  options: {responsive: true, maintainAspectRatio: false, animation: {duration: RM ? 0 : 900, easing: 'easeOutCubic'}, interaction: {intersect: false, mode: 'index'}, plugins: {legend: {display: false}},
+    scales: {x: {grid: {display: false}, border: {display: false}, ticks: {maxTicksLimit: 6, color: '#64748b', font: {size: 12}}}, y: axis('left', 36.5, 38.5, '#b45309', true), y1: axis('right', 40, 70, '#0369a1', false)}}
+});
+if (document.fonts) document.fonts.ready.then(() => chart.resize());
+// Switch panels without recreating controls or losing the selected egg/day.
+const viewTabs = Array.from(document.querySelectorAll('[data-view]'));
+function showView(name, focusTab = false) {
+  if (!viewTabs.some(tab => tab.dataset.view === name)) return;
+  viewTabs.forEach(tab => {
+    const active = tab.dataset.view === name;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    $(tab.getAttribute('aria-controls')).hidden = !active;
+    if (active && focusTab) tab.focus();
+  });
+  moveInd(); const pn = $('panel-' + name); replayBars(pn); replayCounts(pn);
+  requestAnimationFrame(() => {
+    if (name === 'overview') chart.resize();
+    if (name === 'timeline') center(selDay, true);
+  });
+}
+viewTabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => showView(tab.dataset.view));
+  tab.addEventListener('keydown', event => {
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % viewTabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + viewTabs.length - 1) % viewTabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = viewTabs.length - 1;
+    else return;
+    event.preventDefault();
+    showView(viewTabs[next].dataset.view, true);
+  });
+});
+
+
+// แถบเลื่อนใต้แท็บ
+const tabInd = document.querySelector('.tab-ind');
+function moveInd(instant) {
+  const t = document.querySelector('.view-tab[aria-selected="true"]'); if (!t) return;
+  if (instant) tabInd.style.transition = 'none';
+  tabInd.style.width = t.offsetWidth + 'px';
+  tabInd.style.transform = 'translateX(' + t.offsetLeft + 'px)';
+  if (instant) { void tabInd.offsetWidth; tabInd.style.transition = ''; }
+}
+moveInd(true);
+addEventListener('resize', () => moveInd(true));
+addEventListener('load', () => moveInd(true));
+if (document.fonts) document.fonts.ready.then(() => moveInd(true));
+replayCounts(document);
+// API is same-origin. Never silently fall back to browser-generated sensor data.
+async function api(path, options = {}) {
+  const response = await fetch(path, {...options, cache:'no-store', signal:AbortSignal.timeout(8000)});
+  if(response.status===401){location.replace('/login');throw new Error('AUTH_REQUIRED');}
+  if (!response.ok) throw new Error('API ' + response.status);
+  return response.json();
+}
+function applyBatch(batch) {
+  const next = batch?.startDate || '';
+  const changed = (START ? dateKey(START) : '') !== next || activeBatchId !== (batch?.id || null);
+  activeBatchId = batch?.id || null;
+  START = parseDay(next);
+  $('start-date').value = next;
+  $('start-date').disabled = !activeBatchId || savingDate || !canManage;
+  if (changed) renderTimeline(true);
+}
+let eggsSignature = '', historySignature = '', lastLoaded = null, pollRunning = false;
+function applyEggs(rows) {
+  const signature = JSON.stringify(rows);
+  if (signature === eggsSignature) return;
+  eggsSignature = signature;
+  const selectedSlot = EGGS[sel]?.n;
+  EGGS = rows.map(row => ({n:String(row.slot).padStart(2,'0'),
+    p:row.analysis?.hatchProbabilityPercent ?? null,
+    t:row.analysis?.label || 'รอผลวิเคราะห์', st:ST[row.status] ? row.status : 'pending'}));
+  sel = Math.max(0, EGGS.findIndex(egg => egg.n === selectedSlot));
+  const probabilities = EGGS.filter(e => e.p !== null);
+  const avg = probabilities.length ? Math.round(probabilities.reduce((sum,e)=>sum+e.p,0)/probabilities.length) : null;
+  [$('avg'),$('avg-detail')].forEach(el => {
+    if (avg === null) {delete el.dataset.count; cancelAnimationFrame(el._r); el.textContent='—';}
+    else {el.dataset.count=avg;el.dataset.suf='%';tween(el,avg,0,'%');}
+  });
+  if (!EGGS.length) {
+    ['tray','counts','filters','list'].forEach(id=>$(id).replaceChildren());
+    $('detail').textContent='ยังไม่มีไข่ในรอบฟักปัจจุบัน'; return;
+  }
+  buildEggs(); renderList(); updateEggs(); replayCounts($('counts'));
+}
+function applySensors(latest, history, devices) {
+  if (latest) {
+    temp=latest.temperatureC;hum=latest.humidityPercent;
+    const values=[...history,latest];
+    tMin=Math.min(...values.map(v=>v.temperatureC));tMax=Math.max(...values.map(v=>v.temperatureC));
+    hMin=Math.min(...values.map(v=>v.humidityPercent));hMax=Math.max(...values.map(v=>v.humidityPercent));
+    update();
+  } else {
+    ['t-val','h-val','t-min','t-max','h-min','h-max'].forEach(id=>{cancelAnimationFrame($(id)._r);$(id).textContent='—';});
+    $('overall').textContent='ยังไม่มีข้อมูลเซนเซอร์';
+    ['t-chip','h-chip'].forEach(id=>$(id).textContent='รอข้อมูล');
+  }
+  const deviceLabel = value => value === 'simulated_on' ? 'ทำงาน (จำลอง)' : ['simulated_off','simulated_standby'].includes(value) ? 'พัก (จำลอง)' : 'ไม่ทราบ';
+  setText($('heater'),deviceLabel(devices?.heater));setText($('humidifier'),deviceLabel(devices?.humidifier));
+  const signature=JSON.stringify(history);
+  if(signature!==historySignature) {
+    historySignature=signature;
+    L.splice(0,L.length,...history.map(v=>lbl(v.recordedAt)));
+    T.splice(0,T.length,...history.map(v=>v.temperatureC));H.splice(0,H.length,...history.map(v=>v.humidityPercent));
+    chart.update();
+  }
+}
+async function refreshDashboard() {
+  if(pollRunning || savingDate)return;
+  pollRunning=true;
+  try {
+    const [health,status,latest,history,eggs] = await Promise.all([
+      api('/api/health'),api('/api/incubators/1/status'),api('/api/incubators/1/sensors/latest'),
+      api('/api/incubators/1/sensors/history?limit=40'),api('/api/incubators/1/eggs')]);
+    if(!savingDate)applyBatch(status.data?.activeBatch);
+    applyEggs(eggs.data);applySensors(latest.data,history.data,status.data?.devices);
+    lastLoaded=new Date();
+    $('mqtt-indicator').className='w-2 h-2 rounded-full bg-emerald-500';
+    const stamp=latest.data?new Date(latest.data.recordedAt).toLocaleString('th-TH'):'ยังไม่มีข้อมูล';
+    $('mqtt-status').textContent=`Backend เชื่อมต่อแล้ว · ${health.storage === 'postgres' ? 'PostgreSQL' : 'หน่วยความจำ'} · ข้อมูลจำลอง · เซนเซอร์บันทึกล่าสุด: ${stamp} · MQTT ยังไม่เชื่อมต่อ`;
+  } catch(error) {
+    $('mqtt-indicator').className='w-2 h-2 rounded-full bg-red-500';
+    $('mqtt-status').textContent=lastLoaded?'เชื่อมต่อ Backend ไม่สำเร็จ — กำลังแสดงข้อมูลเดิมที่โหลดเมื่อ '+lastLoaded.toLocaleTimeString('th-TH'):'โหลดข้อมูลไม่สำเร็จ กรุณาตรวจว่า Backend และ PostgreSQL เปิดอยู่';
+    $('start-date').disabled=true;
+    if(!lastLoaded)$('detail').textContent='ยังโหลดข้อมูลไข่ไม่ได้';
+  } finally {pollRunning=false;setTimeout(refreshDashboard,3000);}
+}
+document.getElementById('logout').onclick=async function(){
+  this.disabled=true;
+  try{await api('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});location.replace('/login');}
+  catch{this.disabled=false;document.getElementById('mqtt-status').textContent='ออกจากระบบไม่สำเร็จ กรุณาลองใหม่';}
+};
+async function loadApprovals() {
+  const panel=document.getElementById('approvals');if(!panel)return;
+  const list=panel.querySelector('[data-users]');list.textContent='กำลังโหลด…';
+  try {
+    const result=await api('/api/auth/pending');list.replaceChildren();
+    if(!result.users.length){list.textContent='ไม่มีสมาชิกที่รออนุมัติ';return;}
+    for(const user of result.users){
+      const row=document.createElement('div');row.className='flex items-center justify-between gap-3 py-2';
+      const name=document.createElement('span');name.textContent=user.username;
+      const button=document.createElement('button');button.className='cbtn';button.textContent='อนุมัติให้ดูข้อมูล';
+      button.onclick=async()=>{button.disabled=true;try{await api('/api/auth/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:user.id})});await loadApprovals();}catch{button.disabled=false;button.textContent='ไม่สำเร็จ — ลองอีกครั้ง';}};
+      row.append(name,button);list.append(row);
+    }
+  }catch{list.textContent='โหลดรายชื่อไม่สำเร็จ กรุณากดรีเฟรช';}
+}
+api('/api/auth/me').then(result=>{
+  canManage=result.user.role==='admin';
+  document.getElementById('login-user').textContent=result.user.username+(canManage?' · ผู้ดูแล':' · ผู้ดูข้อมูล');
+  $('start-date').disabled=!canManage||!activeBatchId||savingDate;
+  if(!canManage)$('start-status').textContent='สิทธิ์ดูข้อมูล — ผู้ดูแลเท่านั้นที่แก้วันเริ่มฟักได้';
+  if(canManage){
+    const panel=document.createElement('section');panel.id='approvals';panel.className='card';
+    panel.innerHTML='<div class="flex justify-between items-center gap-3"><h2 class="font-bold">สมาชิกที่รออนุมัติ</h2><button type="button" class="cbtn" data-refresh>รีเฟรช</button></div><div class="mt-3 text-sm" data-users role="status"></div>';
+    document.querySelector('header').after(panel);panel.querySelector('[data-refresh]').onclick=loadApprovals;loadApprovals();
+  }
+}).catch(()=>{});
+addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
+refreshDashboard();
+
+</script>
+</body>
+</html>
